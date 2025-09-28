@@ -1,0 +1,279 @@
+﻿@page "/customers"
+@rendermode InteractiveServer
+@using BlackBeeERP.Models
+@using BlackBeeERP.Services
+@inject CustomerService CustomerService
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Customers - BlackBee ERP</PageTitle>
+
+<div class="container-fluid px-4">
+    <h1 class="mt-4">Customer Management</h1>
+    <ol class="breadcrumb mb-4">
+        <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+        <li class="breadcrumb-item active">Customers</li>
+    </ol>
+
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <div>
+                <i class="bi bi-people me-1"></i>
+                Customer List
+            </div>
+            <button class="btn btn-primary" @onclick="AddCustomerClicked">
+                <i class="bi bi-plus-circle me-1"></i> Add Customer
+            </button>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-4 ms-auto">
+                    <div class="input-group">
+                        <input type="text" class="form-control" placeholder="Search customers..."
+                               @bind-value="searchTerm" @bind-value:event="oninput" />
+                        <button class="btn btn-outline-secondary" type="button" @onclick="FilterCustomers">
+                            <i class="bi bi-search"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            @if (isLoading)
+            {
+                <div class="d-flex justify-content-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            }
+            else if (filteredCustomers?.Count == 0)
+            {
+                <div class="alert alert-info">
+                    No customers found. Add a new customer to get started.
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-bordered table-striped">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Phone</th>
+                                <th>Address</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var customer in filteredCustomers!)
+                            {
+                                <tr>
+                                    <td>@customer.Id</td>
+                                    <td>@customer.Name</td>
+                                    <td>@customer.Email</td>
+                                    <td>@customer.Phone</td>
+                                    <td>@customer.Address</td>
+                                    <td>
+                                        @if (customer.IsActive)
+                                        {
+                                            <span class="badge bg-success">Active</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-danger">Inactive</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-info me-1" @onclick="() => EditCustomerClicked(customer)">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-danger" @onclick="() => DeleteConfirm(customer)">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@if (showModal)
+{
+    <div class="modal-backdrop show" style="display:block;"></div>
+    <div class="modal show" style="display:block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@modalTitle</h5>
+                    <button type="button" class="btn-close" @onclick="CloseModal"></button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="@currentCustomer" OnValidSubmit="SaveCustomer">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary />
+
+                        <div class="mb-3">
+                            <label for="name" class="form-label">Name</label>
+                            <InputText id="name" @bind-Value="currentCustomer.Name" class="form-control" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="email" class="form-label">Email</label>
+                            <InputText id="email" @bind-Value="currentCustomer.Email" class="form-control" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="phone" class="form-label">Phone</label>
+                            <InputText id="phone" @bind-Value="currentCustomer.Phone" class="form-control" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="address" class="form-label">Address</label>
+                            <InputText id="address" @bind-Value="currentCustomer.Address" class="form-control" />
+                        </div>
+
+                        <div class="mb-3 form-check">
+                            <InputCheckbox id="isActive" @bind-Value="currentCustomer.IsActive" class="form-check-input" />
+                            <label class="form-check-label" for="isActive">Active</label>
+                        </div>
+
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-save me-1"></i> Save
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Customer>? customers;
+    private List<Customer>? filteredCustomers;
+    private Customer currentCustomer = new();
+    private bool showModal = false;
+    private string modalTitle = "";
+    private string searchTerm = "";
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCustomers();
+    }
+
+    private async Task LoadCustomers()
+    {
+        isLoading = true;
+        try
+        {
+            customers = await CustomerService.GetAllAsync();
+            FilterCustomers();
+        }
+        catch (Exception)
+        {
+            customers = new List<Customer>();
+            filteredCustomers = new List<Customer>();
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void FilterCustomers()
+    {
+        if (string.IsNullOrWhiteSpace(searchTerm))
+            filteredCustomers = customers;
+        else
+            filteredCustomers = customers?
+                .Where(c => c.Name.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+                           c.Email.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+                           c.Phone.Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+    }
+
+    private async Task AddCustomerClicked()
+    {
+        OpenAddEditModal(new Customer());
+    }
+
+    private async Task EditCustomerClicked(Customer customer)
+    {
+        OpenAddEditModal(customer);
+    }
+
+    private void OpenAddEditModal(Customer customer)
+    {
+        currentCustomer = new Customer
+        {
+            Id = customer.Id,
+            Name = customer.Name,
+            Email = customer.Email,
+            Phone = customer.Phone,
+            Address = customer.Address,
+            IsActive = customer.Id == 0 ? true : customer.IsActive,
+            CreatedAt = customer.Id == 0 ? DateTime.UtcNow : customer.CreatedAt
+        };
+
+        modalTitle = customer.Id == 0 ? "Add New Customer" : $"Edit Customer: {customer.Name}";
+        showModal = true;
+        StateHasChanged();
+    }
+
+    private void CloseModal()
+    {
+        showModal = false;
+        StateHasChanged();
+    }
+
+    private async Task SaveCustomer()
+    {
+        try
+        {
+            if (currentCustomer.Id == 0)
+            {
+                await CustomerService.CreateAsync(currentCustomer);
+                await JSRuntime.InvokeVoidAsync("alert", "Customer created successfully!");
+            }
+            else
+            {
+                await CustomerService.UpdateAsync(currentCustomer);
+                await JSRuntime.InvokeVoidAsync("alert", "Customer updated successfully!");
+            }
+
+            CloseModal();
+            await LoadCustomers();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error saving customer: {ex.Message}");
+        }
+    }
+
+    private async Task DeleteConfirm(Customer customer)
+    {
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Are you sure you want to delete {customer.Name}?");
+        if (confirmed)
+        {
+            try
+            {
+                await CustomerService.DeleteAsync(customer.Id);
+                await LoadCustomers();
+                await JSRuntime.InvokeVoidAsync("alert", "Customer deleted successfully!");
+            }
+            catch (Exception ex)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", $"Error deleting customer: {ex.Message}");
+            }
+        }
+    }
+}

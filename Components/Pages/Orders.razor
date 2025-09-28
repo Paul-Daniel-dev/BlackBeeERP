@@ -1,0 +1,595 @@
+﻿@page "/orders"
+@rendermode InteractiveServer
+@using BlackBeeERP.Models
+@using BlackBeeERP.Services
+@inject OrderService OrderService
+@inject CustomerService CustomerService
+@inject ProductService ProductService
+@inject InvoiceService InvoiceService
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Orders - BlackBee ERP</PageTitle>
+
+<div class="container-fluid px-4">
+    <h1 class="mt-4">Order Management</h1>
+    <ol class="breadcrumb mb-4">
+        <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+        <li class="breadcrumb-item active">Orders</li>
+    </ol>
+
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <div>
+                <i class="bi bi-cart me-1"></i>
+                Order List
+            </div>
+            <button class="btn btn-primary" @onclick="AddOrderClicked">
+                <i class="bi bi-plus-circle me-1"></i> Create Order
+            </button>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-4 ms-auto">
+                    <div class="input-group">
+                        <input type="text" class="form-control" placeholder="Search orders..."
+                               @bind-value="searchTerm" @bind-value:event="oninput" />
+                        <button class="btn btn-outline-secondary" type="button" @onclick="FilterOrders">
+                            <i class="bi bi-search"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            @if (isLoading)
+            {
+                <div class="d-flex justify-content-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            }
+            else if (filteredOrders?.Count == 0)
+            {
+                <div class="alert alert-info">
+                    No orders found. Create a new order to get started.
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-bordered table-striped">
+                        <thead>
+                            <tr>
+                                <th>Order ID</th>
+                                <th>Customer</th>
+                                <th>Date</th>
+                                <th>Items</th>
+                                <th>Total</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var order in filteredOrders!)
+                            {
+                                <tr>
+                                    <td>@order.Id</td>
+                                    <td>@(order.Customer?.Name ?? "Unknown")</td>
+                                    <td>@order.OrderDate.ToShortDateString()</td>
+                                    <td>@order.OrderItems.Count</td>
+                                    <td>@FormatCurrency(order.TotalAmount)</td>
+                                    <td>
+                                        @switch (order.Status)
+                                        {
+                                            case "Delivered":
+                                                <span class="badge bg-success">@order.Status</span>
+                                                break;
+                                            case "Shipped":
+                                                <span class="badge bg-info">@order.Status</span>
+                                                break;
+                                            case "Processing":
+                                                <span class="badge bg-warning">@order.Status</span>
+                                                break;
+                                            case "Pending":
+                                                <span class="badge bg-secondary">@order.Status</span>
+                                                break;
+                                            default:
+                                                <span class="badge bg-dark">@order.Status</span>
+                                                break;
+                                        }
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-secondary me-1" @onclick="() => ViewOrderDetails(order)">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-info me-1" @onclick="() => EditOrderClicked(order)">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-danger me-1" @onclick="() => DeleteConfirm(order)">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-primary" @onclick="() => DownloadInvoice(order)">
+                                            <i class="bi bi-file-pdf"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@if (showDetailsModal)
+{
+    <div class="modal-backdrop show" style="display:block;"></div>
+    <div class="modal show" style="display:block;" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Order Details #@selectedOrder?.Id</h5>
+                    <button type="button" class="btn-close" @onclick="CloseDetailsModal"></button>
+                </div>
+                <div class="modal-body">
+                    @if (selectedOrder != null)
+                    {
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <h6>Customer Information</h6>
+                                <p><strong>Name:</strong> @selectedOrder.Customer?.Name</p>
+                                <p><strong>Email:</strong> @selectedOrder.Customer?.Email</p>
+                                <p><strong>Phone:</strong> @selectedOrder.Customer?.Phone</p>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Order Information</h6>
+                                <p><strong>Order Date:</strong> @selectedOrder.OrderDate.ToShortDateString()</p>
+                                <p><strong>Status:</strong> @selectedOrder.Status</p>
+                                <p><strong>Total Amount:</strong> @FormatCurrency(selectedOrder.TotalAmount)</p>
+                            </div>
+                        </div>
+
+                        <h6>Order Items</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered">
+                                <thead>
+                                    <tr>
+                                        <th>Product</th>
+                                        <th>Unit Price</th>
+                                        <th>Quantity</th>
+                                        <th>Subtotal</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var item in selectedOrder.OrderItems)
+                                    {
+                                        <tr>
+                                            <td>@item.Product?.Name</td>
+                                            <td>@FormatCurrency(item.UnitPrice)</td>
+                                            <td>@item.Quantity</td>
+                                            <td>@FormatCurrency(item.UnitPrice * item.Quantity)</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                                <tfoot>
+                                    <tr>
+                                        <th colspan="3" class="text-end">Total:</th>
+                                        <th>@FormatCurrency(selectedOrder.TotalAmount)</th>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseDetailsModal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showOrderModal)
+{
+    <div class="modal-backdrop show" style="display:block;"></div>
+    <div class="modal show" style="display:block;" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@modalTitle</h5>
+                    <button type="button" class="btn-close" @onclick="CloseOrderModal"></button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="@currentOrder" OnValidSubmit="SaveOrder">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary />
+
+                        <div class="mb-3">
+                            <label for="customer" class="form-label">Customer</label>
+                            <InputSelect id="customer" @bind-Value="currentOrder.CustomerId" class="form-select">
+                                <option value="0">-- Select Customer --</option>
+                                @if (customers != null)
+                                {
+                                    @foreach (var customer in customers)
+                                    {
+                                        <option value="@customer.Id">@customer.Name</option>
+                                    }
+                                }
+                            </InputSelect>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="status" class="form-label">Status</label>
+                            <InputSelect id="status" @bind-Value="currentOrder.Status" class="form-select">
+                                <option value="Pending">Pending</option>
+                                <option value="Processing">Processing</option>
+                                <option value="Shipped">Shipped</option>
+                                <option value="Delivered">Delivered</option>
+                                <option value="Cancelled">Cancelled</option>
+                            </InputSelect>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Order Date</label>
+                            <InputDate id="orderDate" @bind-Value="currentOrder.OrderDate" class="form-control" />
+                        </div>
+
+                        <h5 class="mt-4">Order Items</h5>
+
+                        <div class="table-responsive mb-3">
+                            <table class="table table-bordered">
+                                <thead>
+                                    <tr>
+                                        <th>Product</th>
+                                        <th>Unit Price</th>
+                                        <th>Quantity</th>
+                                        <th>Subtotal</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var item in currentOrder.OrderItems)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <select @bind-value="item.ProductId" @bind-value:event="oninput" class="form-select" @onblur="() => UpdateOrderItemPrice(item)">
+                                                    <option value="0">-- Select Product --</option>
+                                                    @if (products != null)
+                                                    {
+                                                        @foreach (var product in products)
+                                                        {
+                                                            <option value="@product.Id">@product.Name (Stock: @product.StockQuantity)</option>
+                                                        }
+                                                    }
+                                                </select>
+                                            </td>
+                                            <td>
+                                                <input type="number" @bind-value="item.UnitPrice" @bind-value:event="oninput" @onblur="CalculateTotal" class="form-control" step="0.01" />
+                                            </td>
+                                            <td>
+                                                <input type="number" @bind-value="item.Quantity" @bind-value:event="oninput" @onblur="CalculateTotal" class="form-control" min="1" />
+                                            </td>
+                                            <td>@FormatCurrency(item.UnitPrice * item.Quantity)</td>
+                                            <td>
+                                                <button type="button" class="btn btn-sm btn-danger" @onclick="() => RemoveOrderItem(item)">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                                <tfoot>
+                                    <tr>
+                                        <td colspan="5">
+                                            <button type="button" class="btn btn-sm btn-success" @onclick="AddOrderItem">
+                                                <i class="bi bi-plus-circle"></i> Add Item
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th colspan="3" class="text-end">Total:</th>
+                                        <th colspan="2">@FormatCurrency(currentOrder.TotalAmount)</th>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" @onclick="CloseOrderModal">Cancel</button>
+                            <button type="submit" class="btn btn-primary" disabled="@(!IsOrderValid())">
+                                <i class="bi bi-save me-1"></i> Save Order
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Order>? orders;
+    private List<Order>? filteredOrders;
+    private Order currentOrder = new() { OrderItems = new List<OrderItem>(), OrderDate = DateTime.Now };
+    private Order? selectedOrder;
+
+    private List<Customer>? customers;
+    private List<Product>? products;
+
+    private bool showOrderModal = false;
+    private bool showDetailsModal = false;
+    private string modalTitle = "";
+    private string searchTerm = "";
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadOrders();
+        await LoadCustomers();
+        await LoadProducts();
+    }
+
+    private async Task LoadOrders()
+    {
+        isLoading = true;
+        try
+        {
+            orders = await OrderService.GetAllAsync();
+            FilterOrders();
+        }
+        catch (Exception)
+        {
+            orders = new List<Order>();
+            filteredOrders = new List<Order>();
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadCustomers()
+    {
+        try
+        {
+            customers = await CustomerService.GetAllAsync();
+        }
+        catch (Exception)
+        {
+            customers = new List<Customer>();
+        }
+    }
+
+    private async Task LoadProducts()
+    {
+        try
+        {
+            products = await ProductService.GetAllAsync();
+        }
+        catch (Exception)
+        {
+            products = new List<Product>();
+        }
+    }
+
+    private async Task DownloadInvoice(Order order)
+    {
+        try
+        {
+            // Generate PDF bytes
+            byte[] pdfBytes = InvoiceService.GenerateInvoicePdf(order);
+
+            // Convert to base64 for download
+            string base64 = Convert.ToBase64String(pdfBytes);
+
+            // Generate a filename
+            string fileName = $"Invoice-{order.Id}-{order.OrderDate:yyyyMMdd}.pdf";
+
+            // Use JS interop to trigger download
+            await JSRuntime.InvokeVoidAsync(
+                "downloadFileFromStream",
+                fileName,
+                "application/pdf",
+                base64);
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error generating invoice: {ex.Message}");
+        }
+    }
+
+    private void FilterOrders()
+    {
+        if (string.IsNullOrWhiteSpace(searchTerm))
+        {
+            filteredOrders = orders;
+        }
+        else
+        {
+            filteredOrders = orders?
+                .Where(o => o.Customer != null &&
+                           (o.Customer.Name.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+                            o.Status.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+                            o.Id.ToString().Contains(searchTerm)))
+                .ToList();
+        }
+    }
+
+    private async Task AddOrderClicked()
+    {
+        currentOrder = new Order
+        {
+            OrderItems = new List<OrderItem>(),
+            OrderDate = DateTime.UtcNow,
+            Status = "Pending"
+        };
+
+        // Add one empty order item by default
+        AddOrderItem();
+
+        modalTitle = "Create New Order";
+        showOrderModal = true;
+        StateHasChanged();
+    }
+
+    private async Task EditOrderClicked(Order order)
+    {
+        // Create a deep copy of the order to avoid modifying the original before saving
+        currentOrder = new Order
+        {
+            Id = order.Id,
+            CustomerId = order.CustomerId,
+            OrderDate = order.OrderDate,
+            Status = order.Status,
+            TotalAmount = order.TotalAmount,
+            OrderItems = order.OrderItems.Select(item => new OrderItem
+            {
+                Id = item.Id,
+                OrderId = item.OrderId,
+                ProductId = item.ProductId,
+                Quantity = item.Quantity,
+                UnitPrice = item.UnitPrice
+            }).ToList()
+        };
+
+        if (currentOrder.OrderItems.Count == 0)
+        {
+            AddOrderItem();
+        }
+
+        modalTitle = $"Edit Order #{order.Id}";
+        showOrderModal = true;
+        StateHasChanged();
+    }
+
+    private void ViewOrderDetails(Order order)
+    {
+        selectedOrder = order;
+        showDetailsModal = true;
+        StateHasChanged();
+    }
+
+    private void CloseDetailsModal()
+    {
+        showDetailsModal = false;
+        StateHasChanged();
+    }
+
+    private void CloseOrderModal()
+    {
+        showOrderModal = false;
+        StateHasChanged();
+    }
+
+    private void AddOrderItem()
+    {
+        currentOrder.OrderItems.Add(new OrderItem());
+        StateHasChanged();
+    }
+
+    private void RemoveOrderItem(OrderItem item)
+    {
+        currentOrder.OrderItems.Remove(item);
+        CalculateTotal();
+        StateHasChanged();
+    }
+
+    private async Task UpdateOrderItemPrice(OrderItem item)
+    {
+        if (item.ProductId > 0)
+        {
+            var product = products?.FirstOrDefault(p => p.Id == item.ProductId);
+            if (product != null)
+            {
+                item.UnitPrice = product.Price;
+                CalculateTotal();
+                StateHasChanged();
+            }
+        }
+    }
+
+    private void CalculateTotal()
+    {
+        currentOrder.TotalAmount = currentOrder.OrderItems.Sum(item => item.Quantity * item.UnitPrice);
+        StateHasChanged();
+    }
+
+    private bool IsOrderValid()
+    {
+        return currentOrder.CustomerId > 0 &&
+               currentOrder.OrderItems.Count > 0 &&
+               currentOrder.OrderItems.All(item => item.ProductId > 0 && item.Quantity > 0 && item.UnitPrice > 0);
+    }
+
+    private async Task SaveOrder()
+    {
+        try
+        {
+            // First calculate the total
+            CalculateTotal();
+
+            // For new order items in an existing order, ensure the OrderId is set
+            if (currentOrder.Id > 0)
+            {
+                foreach (var item in currentOrder.OrderItems)
+                {
+                    item.OrderId = currentOrder.Id;
+                }
+            }
+
+            if (currentOrder.Id == 0)
+            {
+                // Create new order
+                await OrderService.CreateAsync(currentOrder);
+                await JSRuntime.InvokeVoidAsync("alert", "Order created successfully!");
+            }
+            else
+            {
+                // Update existing order
+                var existingOrder = await OrderService.GetByIdAsync(currentOrder.Id);
+                if (existingOrder != null)
+                {
+                    await OrderService.UpdateAsync(currentOrder);
+                    await JSRuntime.InvokeVoidAsync("alert", "Order updated successfully!");
+                }
+            }
+
+            CloseOrderModal();
+            await LoadOrders();
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("Not enough stock"))
+        {
+            await JSRuntime.InvokeVoidAsync("alert", ex.Message);
+        }
+        catch (Exception ex)
+        {
+            string innerMsg = ex.InnerException?.Message ?? ex.Message;
+            await JSRuntime.InvokeVoidAsync("alert", $"Error: {innerMsg}");
+            throw;
+        }
+    }
+
+    private async Task DeleteConfirm(Order order)
+    {
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Are you sure you want to delete Order #{order.Id}?");
+        if (confirmed)
+        {
+            try
+            {
+                await OrderService.DeleteAsync(order.Id);
+                await LoadOrders();
+                await JSRuntime.InvokeVoidAsync("alert", "Order deleted successfully!");
+            }
+            catch (Exception ex)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", $"Error deleting order: {ex.Message}");
+            }
+        }
+    }
+
+    private string FormatCurrency(decimal amount)
+    {
+        return $"R {amount.ToString("F2")}";
+    }
+}

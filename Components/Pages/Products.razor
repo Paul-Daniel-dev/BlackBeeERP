@@ -1,0 +1,294 @@
+﻿@page "/products"
+@rendermode InteractiveServer
+@using BlackBeeERP.Models
+@using BlackBeeERP.Services
+@inject ProductService ProductService
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Products - BlackBee ERP</PageTitle>
+
+<div class="container-fluid px-4">
+    <h1 class="mt-4">Product Management</h1>
+    <ol class="breadcrumb mb-4">
+        <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+        <li class="breadcrumb-item active">Products</li>
+    </ol>
+
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <div>
+                <i class="bi bi-box-seam me-1"></i>
+                Product List
+            </div>
+            <button class="btn btn-primary" @onclick="AddProductClicked">
+                <i class="bi bi-plus-circle me-1"></i> Add Product
+            </button>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-4 ms-auto">
+                    <div class="input-group">
+                        <input type="text" class="form-control" placeholder="Search products..."
+                               @bind-value="searchTerm" @bind-value:event="oninput" />
+                        <button class="btn btn-outline-secondary" type="button" @onclick="FilterProducts">
+                            <i class="bi bi-search"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            @if (isLoading)
+            {
+                <div class="d-flex justify-content-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            }
+            else if (filteredProducts?.Count == 0)
+            {
+                <div class="alert alert-info">
+                    No products found. Add a new product to get started.
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-bordered table-striped">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>SKU</th>
+                                <th>Price</th>
+                                <th>Stock</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var product in filteredProducts!)
+                            {
+                                <tr>
+                                    <td>@product.Id</td>
+                                    <td>@product.Name</td>
+                                    <td>@product.SKU</td>
+                                    <td>R @product.Price.ToString("F2")</td>
+                                    <td>
+                                        @if (product.StockQuantity < 10)
+                                        {
+                                            <span class="text-danger fw-bold">@product.StockQuantity</span>
+                                        }
+                                        else
+                                        {
+                                            <span>@product.StockQuantity</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (product.IsActive)
+                                        {
+                                            <span class="badge bg-success">Active</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-danger">Inactive</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-info me-1" @onclick="() => EditProductClicked(product)">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-danger" @onclick="() => DeleteConfirm(product)">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@if (showModal)
+{
+    <div class="modal-backdrop show" style="display:block;"></div>
+    <div class="modal show" style="display:block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@modalTitle</h5>
+                    <button type="button" class="btn-close" @onclick="CloseModal"></button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="@currentProduct" OnValidSubmit="SaveProduct">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary />
+
+                        <div class="mb-3">
+                            <label for="name" class="form-label">Name</label>
+                            <InputText id="name" @bind-Value="currentProduct.Name" class="form-control" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="description" class="form-label">Description</label>
+                            <InputTextArea id="description" @bind-Value="currentProduct.Description" class="form-control" rows="3" />
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col">
+                                <label for="price" class="form-label">Price (R)</label>
+                                <InputNumber id="price" @bind-Value="currentProduct.Price" class="form-control" step="0.01" />
+                            </div>
+                            <div class="col">
+                                <label for="stock" class="form-label">Stock Quantity</label>
+                                <InputNumber id="stock" @bind-Value="currentProduct.StockQuantity" class="form-control" />
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="sku" class="form-label">SKU</label>
+                            <InputText id="sku" @bind-Value="currentProduct.SKU" class="form-control" />
+                        </div>
+
+                        <div class="mb-3 form-check">
+                            <InputCheckbox id="isActive" @bind-Value="currentProduct.IsActive" class="form-check-input" />
+                            <label class="form-check-label" for="isActive">Active</label>
+                        </div>
+
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-save me-1"></i> Save
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Product>? products;
+    private List<Product>? filteredProducts;
+    private Product currentProduct = new();
+    private bool showModal = false;
+    private string modalTitle = "";
+    private string searchTerm = "";
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadProducts();
+    }
+
+    private async Task LoadProducts()
+    {
+        isLoading = true;
+        try
+        {
+            products = await ProductService.GetAllAsync();
+            FilterProducts();
+        }
+        catch (Exception)
+        {
+            products = new List<Product>();
+            filteredProducts = new List<Product>();
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void FilterProducts()
+    {
+        if (string.IsNullOrWhiteSpace(searchTerm))
+            filteredProducts = products;
+        else
+            filteredProducts = products?
+                .Where(p => p.Name.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+                           p.SKU.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+                           p.Description.Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+    }
+
+    private async Task AddProductClicked()
+    {
+        OpenAddEditModal(new Product());
+    }
+
+    private async Task EditProductClicked(Product product)
+    {
+        OpenAddEditModal(product);
+    }
+
+    private void OpenAddEditModal(Product product)
+    {
+        currentProduct = new Product
+        {
+            Id = product.Id,
+            Name = product.Name,
+            Description = product.Description,
+            Price = product.Price,
+            StockQuantity = product.StockQuantity,
+            SKU = product.SKU,
+            IsActive = product.Id == 0 ? true : product.IsActive
+        };
+
+        modalTitle = product.Id == 0 ? "Add New Product" : $"Edit Product: {product.Name}";
+        showModal = true;
+        StateHasChanged();
+    }
+
+    private void CloseModal()
+    {
+        showModal = false;
+        StateHasChanged();
+    }
+
+    private async Task SaveProduct()
+    {
+        try
+        {
+            if (currentProduct.Id == 0)
+            {
+                await ProductService.CreateAsync(currentProduct);
+                await JSRuntime.InvokeVoidAsync("alert", "Product created successfully!");
+            }
+            else
+            {
+                await ProductService.UpdateAsync(currentProduct);
+                await JSRuntime.InvokeVoidAsync("alert", "Product updated successfully!");
+            }
+
+            CloseModal();
+            await LoadProducts();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error saving product: {ex.Message}");
+        }
+    }
+
+    private async Task DeleteConfirm(Product product)
+    {
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Are you sure you want to delete {product.Name}?");
+        if (confirmed)
+        {
+            try
+            {
+                await ProductService.DeleteAsync(product.Id);
+                await LoadProducts();
+                await JSRuntime.InvokeVoidAsync("alert", "Product deleted successfully!");
+            }
+            catch (Exception ex)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", $"Error deleting product: {ex.Message}");
+            }
+        }
+    }
+}

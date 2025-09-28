@@ -1,0 +1,227 @@
+﻿@page "/"
+@using BlackBeeERP.Models
+@using BlackBeeERP.Services
+@inject CustomerService CustomerService
+@inject ProductService ProductService
+@inject OrderService OrderService
+
+<PageTitle>Dashboard - BlackBee ERP</PageTitle>
+
+<div class="container-fluid px-4">
+    <h1 class="mt-4">Dashboard</h1>
+    <ol class="breadcrumb mb-4">
+        <li class="breadcrumb-item active">Dashboard</li>
+    </ol>
+
+    <div class="row">
+        <div class="col-xl-3 col-md-6">
+            <div class="card bg-primary text-white mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Customers</h5>
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-people fs-1 me-3"></i>
+                        <span class="fs-1">@customerCount</span>
+                    </div>
+                </div>
+                <div class="card-footer d-flex align-items-center justify-content-between">
+                    <a class="small text-white stretched-link" href="customers">View Details</a>
+                    <div class="small text-white"><i class="bi bi-arrow-right"></i></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6">
+            <div class="card bg-success text-white mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Products</h5>
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-box-seam fs-1 me-3"></i>
+                        <span class="fs-1">@productCount</span>
+                    </div>
+                </div>
+                <div class="card-footer d-flex align-items-center justify-content-between">
+                    <a class="small text-white stretched-link" href="products">View Details</a>
+                    <div class="small text-white"><i class="bi bi-arrow-right"></i></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6">
+            <div class="card bg-warning text-white mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Orders</h5>
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-cart fs-1 me-3"></i>
+                        <span class="fs-1">@orderCount</span>
+                    </div>
+                </div>
+                <div class="card-footer d-flex align-items-center justify-content-between">
+                    <a class="small text-white stretched-link" href="orders">View Details</a>
+                    <div class="small text-white"><i class="bi bi-arrow-right"></i></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6">
+            <div class="card bg-danger text-white mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Low Stock</h5>
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-exclamation-triangle fs-1 me-3"></i>
+                        <span class="fs-1">@lowStockCount</span>
+                    </div>
+                </div>
+                <div class="card-footer d-flex align-items-center justify-content-between">
+                    <a class="small text-white stretched-link" href="products">View Details</a>
+                    <div class="small text-white"><i class="bi bi-arrow-right"></i></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-xl-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <i class="bi bi-table me-1"></i>
+                    Recent Orders
+                </div>
+                <div class="card-body">
+                    @if (recentOrders == null)
+                    {
+                        <p><em>Loading...</em></p>
+                    }
+                    else if (!recentOrders.Any())
+                    {
+                        <p>No orders found.</p>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Customer</th>
+                                        <th>Date</th>
+                                        <th>Amount</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var order in recentOrders)
+                                    {
+                                        <tr>
+                                            <td>@order.Id</td>
+                                            <td>@(order.Customer?.Name ?? "Unknown")</td>
+                                            <td>@order.OrderDate.ToShortDateString()</td>
+                                            <td>R @order.TotalAmount.ToString("F2")</td>
+                                            <td>
+                                                @switch (order.Status)
+                                                {
+                                                    case "Delivered":
+                                                        <span class="badge bg-success">@order.Status</span>
+                                                        break;
+                                                    case "Shipped":
+                                                        <span class="badge bg-info">@order.Status</span>
+                                                        break;
+                                                    case "Pending":
+                                                        <span class="badge bg-warning">@order.Status</span>
+                                                        break;
+                                                    default:
+                                                        <span class="badge bg-secondary">@order.Status</span>
+                                                        break;
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <i class="bi bi-exclamation-triangle me-1"></i>
+                    Low Stock Products
+                </div>
+                <div class="card-body">
+                    @if (lowStockProducts == null)
+                    {
+                        <p><em>Loading...</em></p>
+                    }
+                    else if (!lowStockProducts.Any())
+                    {
+                        <p>No low stock products found.</p>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>SKU</th>
+                                        <th>Stock</th>
+                                        <th>Price</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var product in lowStockProducts)
+                                    {
+                                        <tr>
+                                            <td>@product.Name</td>
+                                            <td>@product.SKU</td>
+                                            <td class="text-danger fw-bold">@product.StockQuantity</td>
+                                            <td>R @product.Price.ToString("F2")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private int customerCount;
+    private int productCount;
+    private int orderCount;
+    private int lowStockCount;
+    private List<Order>? recentOrders;
+    private List<Product>? lowStockProducts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var customers = await CustomerService.GetAllAsync();
+            customerCount = customers.Count;
+
+            var products = await ProductService.GetAllAsync();
+            productCount = products.Count;
+
+            lowStockProducts = await ProductService.GetLowStockProductsAsync(10);
+            lowStockCount = lowStockProducts.Count;
+
+            var orders = await OrderService.GetAllAsync();
+            orderCount = orders.Count;
+
+            recentOrders = await OrderService.GetRecentOrdersAsync(5);
+        }
+        catch (Exception)
+        {
+            // Handle any errors
+            customerCount = 0;
+            productCount = 0;
+            orderCount = 0;
+            lowStockCount = 0;
+            recentOrders = new List<Order>();
+            lowStockProducts = new List<Product>();
+        }
+    }
+}

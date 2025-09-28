@@ -1,0 +1,619 @@
+﻿@page "/reports"
+@rendermode InteractiveServer
+@using BlackBeeERP.Models
+@using BlackBeeERP.Services
+@inject CustomerService CustomerService
+@inject ProductService ProductService
+@inject OrderService OrderService
+@inject InvoiceService InvoiceService
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Reports - BlackBee ERP</PageTitle>
+
+<div class="container-fluid px-4">
+    <h1 class="mt-4">Business Reports</h1>
+    <ol class="breadcrumb mb-4">
+        <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+        <li class="breadcrumb-item active">Reports</li>
+    </ol>
+
+    @if (isLoading)
+    {
+        <div class="d-flex justify-content-center my-5">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    }
+    else
+    {
+        <!-- Sales Overview Section -->
+        <div class="row">
+            <div class="col-xl-12">
+                <div class="card mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <div>
+                            <i class="bi bi-graph-up-arrow me-1"></i>
+                            Sales Overview
+                        </div>
+                        <div class="d-flex align-items-center">
+                            <select class="form-select form-select-sm me-2" @bind="selectedTimePeriod" @bind:after="RefreshData">
+                                <option value="7">Last 7 Days</option>
+                                <option value="30">Last 30 Days</option>
+                                <option value="90">Last 90 Days</option>
+                                <option value="365">Last Year</option>
+                                <option value="0">All Time</option>
+                            </select>
+                            <button class="btn btn-sm btn-outline-primary" @onclick="ExportToPdf">
+                                <i class="bi bi-file-pdf me-1"></i> Export Report
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <div class="card text-white bg-primary mb-3">
+                                    <div class="card-body">
+                                        <h5 class="card-title">Total Orders</h5>
+                                        <p class="display-4">@filteredOrders.Count</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="card text-white bg-success mb-3">
+                                    <div class="card-body">
+                                        <h5 class="card-title">Total Revenue</h5>
+                                        <p class="display-4">R @totalRevenue.ToString("N2")</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="card text-white bg-info mb-3">
+                                    <div class="card-body">
+                                        <h5 class="card-title">Avg. Order Value</h5>
+                                        <p class="display-4">R @averageOrderValue.ToString("N2")</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="card text-white bg-warning mb-3">
+                                    <div class="card-body">
+                                        <h5 class="card-title">Items Sold</h5>
+                                        <p class="display-4">@totalItemsSold</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row mt-4">
+                            <div class="col-md-6">
+                                <div class="card mb-4">
+                                    <div class="card-header">
+                                        <i class="bi bi-bar-chart me-1"></i>
+                                        Order Status Distribution
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="table-responsive">
+                                            <table class="table table-bordered">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Status</th>
+                                                        <th>Count</th>
+                                                        <th>Percentage</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach (var status in orderStatusDistribution)
+                                                    {
+                                                        <tr>
+                                                            <td>
+                                                                @switch (status.Key)
+                                                                {
+                                                                    case "Delivered":
+                                                                        <span class="badge bg-success">@status.Key</span>
+                                                                        break;
+                                                                    case "Shipped":
+                                                                        <span class="badge bg-info">@status.Key</span>
+                                                                        break;
+                                                                    case "Processing":
+                                                                        <span class="badge bg-warning">@status.Key</span>
+                                                                        break;
+                                                                    case "Pending":
+                                                                        <span class="badge bg-secondary">@status.Key</span>
+                                                                        break;
+                                                                    case "Cancelled":
+                                                                        <span class="badge bg-danger">@status.Key</span>
+                                                                        break;
+                                                                    default:
+                                                                        <span class="badge bg-dark">@status.Key</span>
+                                                                        break;
+                                                                }
+                                                            </td>
+                                                            <td>@status.Value</td>
+                                                            <td>@((filteredOrders.Count > 0 ? ((float)status.Value / filteredOrders.Count * 100) : 0).ToString("N1"))%</td>
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <div class="card mb-4">
+                                    <div class="card-header">
+                                        <i class="bi bi-currency-dollar me-1"></i>
+                                        Revenue by Month
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="table-responsive">
+                                            <table class="table table-bordered">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Month</th>
+                                                        <th>Orders</th>
+                                                        <th>Revenue</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach (var month in revenueByMonth.OrderByDescending(m => m.Key))
+                                                    {
+                                                        <tr>
+                                                            <td>@month.Key</td>
+                                                            <td>@month.Value.OrderCount</td>
+                                                            <td>R @month.Value.Revenue.ToString("N2")</td>
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Product Performance Section -->
+        <div class="row">
+            <div class="col-xl-12">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <i class="bi bi-box-seam me-1"></i>
+                        Product Performance
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="card mb-4">
+                                    <div class="card-header">
+                                        <i class="bi bi-star me-1"></i>
+                                        Top Selling Products
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="table-responsive">
+                                            <table class="table table-bordered table-hover">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Product</th>
+                                                        <th>Units Sold</th>
+                                                        <th>Revenue</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach (var product in topSellingProducts.Take(5))
+                                                    {
+                                                        <tr>
+                                                            <td>@product.Name</td>
+                                                            <td>@product.QuantitySold</td>
+                                                            <td>R @product.Revenue.ToString("N2")</td>
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <div class="card mb-4">
+                                    <div class="card-header">
+                                        <i class="bi bi-exclamation-triangle me-1"></i>
+                                        Inventory Status
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="row">
+                                            <div class="col-md-4">
+                                                <div class="card bg-success text-white mb-3">
+                                                    <div class="card-body text-center">
+                                                        <h5>In Stock</h5>
+                                                        <p class="h3">@(products.Count(p => p.StockQuantity > 10))</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <div class="card bg-warning text-white mb-3">
+                                                    <div class="card-body text-center">
+                                                        <h5>Low Stock</h5>
+                                                        <p class="h3">@(products.Count(p => p.StockQuantity > 0 && p.StockQuantity <= 10))</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <div class="card bg-danger text-white mb-3">
+                                                    <div class="card-body text-center">
+                                                        <h5>Out of Stock</h5>
+                                                        <p class="h3">@(products.Count(p => p.StockQuantity == 0))</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Customer Analysis Section -->
+        <div class="row">
+            <div class="col-xl-12">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <i class="bi bi-people me-1"></i>
+                        Customer Analysis
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="card mb-4">
+                                    <div class="card-header">
+                                        <i class="bi bi-trophy me-1"></i>
+                                        Top Customers
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="table-responsive">
+                                            <table class="table table-bordered table-hover">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Customer</th>
+                                                        <th>Orders</th>
+                                                        <th>Total Spent</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach (var customer in topCustomers.Take(5))
+                                                    {
+                                                        <tr>
+                                                            <td>@customer.Name</td>
+                                                            <td>@customer.OrderCount</td>
+                                                            <td>R @customer.TotalSpent.ToString("N2")</td>
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <div class="card mb-4">
+                                    <div class="card-header">
+                                        <i class="bi bi-person-badge me-1"></i>
+                                        Customer Overview
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <div class="card bg-primary text-white mb-3">
+                                                    <div class="card-body text-center">
+                                                        <h5>Total Customers</h5>
+                                                        <p class="h3">@customers.Count</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="card bg-info text-white mb-3">
+                                                    <div class="card-body text-center">
+                                                        <h5>Active Customers</h5>
+                                                        <p class="h3">@customers.Count(c => c.IsActive)</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="mt-3">
+                                            <h6>Customer Acquisition</h6>
+                                            <div class="table-responsive">
+                                                <table class="table table-bordered">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Month</th>
+                                                            <th>New Customers</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        @foreach (var month in customersByMonth.OrderByDescending(m => m.Key).Take(6))
+                                                        {
+                                                            <tr>
+                                                                <td>@month.Key</td>
+                                                                <td>@month.Value</td>
+                                                            </tr>
+                                                        }
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool isLoading = true;
+    private int selectedTimePeriod = 30; // Default to last 30 days
+
+    // Data sources
+    private List<Customer> customers = new();
+    private List<Product> products = new();
+    private List<Order> orders = new();
+
+    // Calculated metrics
+    private List<Order> filteredOrders = new();
+    private decimal totalRevenue;
+    private decimal averageOrderValue;
+    private int totalItemsSold;
+    private Dictionary<string, int> orderStatusDistribution = new();
+    private Dictionary<string, MonthlyRevenue> revenueByMonth = new();
+    private List<ProductPerformance> topSellingProducts = new();
+    private List<CustomerSpending> topCustomers = new();
+    private Dictionary<string, int> customersByMonth = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        isLoading = true;
+        await LoadData();
+        isLoading = false;
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            // Load all data
+            customers = await CustomerService.GetAllAsync();
+            products = await ProductService.GetAllAsync();
+            orders = await OrderService.GetAllAsync();
+
+            // Apply time period filter if needed
+            ApplyTimePeriodFilter();
+
+            // Calculate metrics
+            CalculateMetrics();
+        }
+        catch (Exception)
+        {
+            // Initialize empty data sets if there's an error
+            customers = new List<Customer>();
+            products = new List<Product>();
+            orders = new List<Order>();
+            filteredOrders = new List<Order>();
+        }
+    }
+
+    private void ApplyTimePeriodFilter()
+    {
+        if (selectedTimePeriod > 0)
+        {
+            var cutoffDate = DateTime.Now.AddDays(-selectedTimePeriod);
+            filteredOrders = orders.Where(o => o.OrderDate >= cutoffDate).ToList();
+        }
+        else
+        {
+            // All time
+            filteredOrders = orders.ToList();
+        }
+    }
+
+    private void CalculateMetrics()
+    {
+        // Calculate sales metrics
+        totalRevenue = filteredOrders.Sum(o => o.TotalAmount);
+        averageOrderValue = filteredOrders.Count > 0 ? totalRevenue / filteredOrders.Count : 0;
+        totalItemsSold = filteredOrders.Sum(o => o.OrderItems.Sum(i => i.Quantity));
+
+        // Order status distribution
+        orderStatusDistribution = filteredOrders
+            .GroupBy(o => o.Status)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        // Revenue by month
+        revenueByMonth = filteredOrders
+            .GroupBy(o => o.OrderDate.ToString("yyyy-MM"))
+            .ToDictionary(
+                g => g.Key,
+                g => new MonthlyRevenue
+                {
+                    OrderCount = g.Count(),
+                    Revenue = g.Sum(o => o.TotalAmount)
+                }
+            );
+
+        // Top selling products
+        var productSales = new Dictionary<int, ProductPerformance>();
+        foreach (var order in filteredOrders)
+        {
+            foreach (var item in order.OrderItems)
+            {
+                if (!productSales.ContainsKey(item.ProductId))
+                {
+                    var product = products.FirstOrDefault(p => p.Id == item.ProductId);
+                    productSales[item.ProductId] = new ProductPerformance
+                    {
+                        Id = item.ProductId,
+                        Name = product?.Name ?? $"Product #{item.ProductId}",
+                        QuantitySold = 0,
+                        Revenue = 0
+                    };
+                }
+
+                productSales[item.ProductId].QuantitySold += item.Quantity;
+                productSales[item.ProductId].Revenue += item.Quantity * item.UnitPrice;
+            }
+        }
+
+        topSellingProducts = productSales.Values.OrderByDescending(p => p.Revenue).ToList();
+
+        // Top customers
+        var customerSpending = new Dictionary<int, CustomerSpending>();
+        foreach (var order in filteredOrders)
+        {
+            if (!customerSpending.ContainsKey(order.CustomerId))
+            {
+                var customer = customers.FirstOrDefault(c => c.Id == order.CustomerId);
+                customerSpending[order.CustomerId] = new CustomerSpending
+                {
+                    Id = order.CustomerId,
+                    Name = customer?.Name ?? $"Customer #{order.CustomerId}",
+                    OrderCount = 0,
+                    TotalSpent = 0
+                };
+            }
+
+            customerSpending[order.CustomerId].OrderCount++;
+            customerSpending[order.CustomerId].TotalSpent += order.TotalAmount;
+        }
+
+        topCustomers = customerSpending.Values.OrderByDescending(c => c.TotalSpent).ToList();
+
+        // Customer acquisition by month
+        customersByMonth = customers
+            .GroupBy(c => c.CreatedAt.ToString("yyyy-MM"))
+            .ToDictionary(g => g.Key, g => g.Count());
+    }
+
+    private async Task OnTimePeriodChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var period))
+        {
+            selectedTimePeriod = period;
+            await RefreshData();
+        }
+    }
+
+    private async Task RefreshData()
+    {
+        isLoading = true;
+        ApplyTimePeriodFilter();
+        CalculateMetrics();
+        isLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task ExportToPdf()
+    {
+        isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            // Create a simple report order for PDF generation
+            var reportOrder = new Order
+            {
+                Id = 0,
+                CustomerId = 0,
+                OrderDate = DateTime.Now,
+                Status = $"Report: {selectedTimePeriod} days",
+                TotalAmount = totalRevenue,
+                OrderItems = new List<OrderItem>(),
+                Customer = new Customer
+                {
+                    Name = "BlackBee ERP Report",
+                    Email = "Period: " + (selectedTimePeriod == 0 ? "All Time" : $"Last {selectedTimePeriod} Days"),
+                    Phone = $"Total Orders: {filteredOrders.Count}",
+                    Address = $"Generated on {DateTime.Now}"
+                }
+            };
+
+            // Add report items as order items
+            // Top 5 products as order items to show in the report
+            foreach (var product in topSellingProducts.Take(5))
+            {
+                reportOrder.OrderItems.Add(new OrderItem
+                {
+                    ProductId = product.Id,
+                    Quantity = product.QuantitySold,
+                    UnitPrice = product.Revenue / (product.QuantitySold > 0 ? product.QuantitySold : 1),
+                    Product = new Product { Name = product.Name }
+                });
+            }
+
+            // Generate PDF bytes using InvoiceService
+            byte[] pdfBytes = InvoiceService.GenerateInvoicePdf(reportOrder);
+
+            // Generate filename with period info
+            string periodText = selectedTimePeriod switch
+            {
+                7 => "7Days",
+                30 => "30Days",
+                90 => "90Days",
+                365 => "1Year",
+                _ => "AllTime"
+            };
+
+            string fileName = $"BlackBeeERP_Report_{periodText}_{DateTime.Now:yyyyMMdd}.pdf";
+
+            // Trigger download via JS
+            await JSRuntime.InvokeVoidAsync(
+                "downloadFileFromStream",
+                fileName,
+                "application/pdf",
+                Convert.ToBase64String(pdfBytes)
+            );
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error generating report: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    // Helper classes for organizing report data
+    private class MonthlyRevenue
+    {
+        public int OrderCount { get; set; }
+        public decimal Revenue { get; set; }
+    }
+
+    private class ProductPerformance
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+        public int QuantitySold { get; set; }
+        public decimal Revenue { get; set; }
+    }
+
+    private class CustomerSpending
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+        public int OrderCount { get; set; }
+        public decimal TotalSpent { get; set; }
+    }
+}
